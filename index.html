@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>minimo‑2人1組英トレアプリ</title>
+<style>
+  :root{--gap:1rem;}
+  *{box-sizing:border-box;}
+  body{margin:0;padding:var(--gap);
+       font-family:-apple-system,'游ゴシック','Noto Sans JP',sans-serif;
+       line-height:1.5;word-break:break-word;}
+
+  /* 起動画面 */
+  #startup{display:flex;flex-direction:column;align-items:center;padding-top:12vh;}
+  .appTitle{margin:0;font-size:2.6rem;font-weight:800;letter-spacing:.12em;color:#000;}  /* ← 黒字 */
+
+  .subtitle{margin:.4rem 0 var(--gap);font-size:1rem;font-weight:500;}
+  #startup button{max-width:280px;width:100%;}
+
+  /* コントロールバー */
+  button,input[type="text"]{font-size:1rem;padding:.75rem .5rem;border:1px solid #ccc;
+    border-radius:.5rem;background:#f5f5f5;margin-bottom:var(--gap);}
+  button:active{background:#e0e0e0;}
+
+  #controls{margin-bottom:var(--gap);display:flex;flex-wrap:nowrap;gap:.6rem;align-items:center;overflow-x:auto;}
+  #seedBox{flex:1 1 0;min-width:100px;margin:0;}
+  #shuffleBtn{flex:0 0 auto;margin:0;}
+
+  /* リスト */
+  #listWrapper{font-size:1rem;}
+  .item{margin-bottom:var(--gap);}
+  .num{font-weight:bold;}
+  .en{margin-left:.5em;overflow-wrap:break-word;word-break:keep-all;}
+  .ja{margin-left:.5em;}
+  #listWrapper.hideJP .ja{display:none;}
+
+  /* トグル */
+  .switchLabel{display:flex;align-items:center;gap:.4em;font-size:.95rem;}
+  .toggleSwitch{position:relative;width:2.5em;height:1.4em;}
+  .toggleSwitch input{opacity:0;width:0;height:0;}
+  .slider{position:absolute;inset:0;background:#ccc;border-radius:1em;transition:.2s;}
+  .slider:before{content:"";position:absolute;left:.2em;bottom:.2em;width:1em;height:1em;background:#fff;border-radius:50%;transition:.2s;}
+  .toggleSwitch input:checked + .slider{background:#4cd964;}
+  .toggleSwitch input:checked + .slider:before{transform:translateX(1.1em);}
+</style>
+</head>
+<body>
+
+<section id="startup">
+  <h1 class="appTitle">minimo</h1>
+  <div class="subtitle">2人1組英トレアプリ</div>
+
+  <input type="file" id="fileInput" accept=".xlsx" hidden>
+  <button id="pickFileBtn">Excel ファイルを読み取る</button>
+  <button id="buildBtn" disabled>ページを作る</button>
+</section>
+
+<section id="displayPage" style="display:none">
+  <div id="controls">
+    <label class="switchLabel">
+      回答者機能
+      <span class="toggleSwitch">
+        <input type="checkbox" id="answerToggle">
+        <span class="slider"></span>
+      </span>
+    </label>
+    <input type="text" id="seedBox" placeholder="Seed">
+    <button id="shuffleBtn">ランダム表示</button>
+  </div>
+  <div id="listWrapper"></div>
+</section>
+
+<script>
+/* ライブラリ読み込み */
+(async()=>{
+  const libs=[
+    {g:'XLSX',u:'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',k:'minimo_xlsx'},
+    {g:'Math.seedrandom',u:'https://cdn.jsdelivr.net/npm/seedrandom@3.0.5/seedrandom.min.js',k:'minimo_seed'}
+  ],run=c=>Function(c)();
+  for(const{g,u,k}of libs){
+    const[a,b]=g.split('.');let ok=b?(window[a]&&window[a][b]):window[a];
+    if(ok)continue;
+    let code=localStorage.getItem(k);
+    if(code){run(code);ok=b?(window[a]&&window[a][b]):window[a];}
+    if(ok)continue;
+    const r=await fetch(u);if(!r.ok)throw new Error(r.status);
+    code=await r.text();run(code);localStorage.setItem(k,code);
+  }
+  init();
+})();
+
+/* メイン */
+function init(){
+  const $=id=>document.getElementById(id);
+  const f=$('fileInput'),pk=$('pickFileBtn'),bd=$('buildBtn'),
+        sd=$('seedBox'),sh=$('shuffleBtn'),lw=$('listWrapper'),
+        at=$('answerToggle'),st=$('startup'),dp=$('displayPage');
+  let rows=[],header=false;
+
+  pk.onclick=()=>f.click();
+
+  f.onchange=async()=>{
+    if(!f.files.length)return;
+    try{
+      const buf=await f.files[0].arrayBuffer();
+      const sheet=XLSX.read(buf,{type:'array'}).Sheets;
+      const data=XLSX.utils.sheet_to_json(sheet[Object.keys(sheet)[0]],{header:1,raw:false});
+      rows=[];header=false;
+      const max=Math.min(2000,data.length);
+      if(((data[0][0]||'').trim()==='')||isNaN(data[0][0]))header=true;
+      if(!header){
+        for(let i=0;i<max;i++){
+          const [A,B,C]=data[i];
+          if(!A||!B||!C)break;
+          rows.push({num:A.toString().trim(),
+                     en:(B||'').replace(/\n/g,' ').trim(),
+                     ja:(C||'').replace(/\n/g,' ').trim()});
+        }
+      }
+      bd.disabled=false;
+      alert(`読み込み完了: ${header?0:rows.length} 行`);
+    }catch(e){alert('読み込みエラー: '+e);}
+  };
+
+  bd.onclick=()=>{
+    st.style.display='none';dp.style.display='block';
+    render(rows);toggleJP();
+  };
+
+  sh.onclick=()=>{
+    if(header||!rows.length){alert('データがありません');return;}
+    const seed=sd.value.trim();
+    const arr=seed===''?rows:shuffle(rows,seed);
+    render(arr);toggleJP();
+  };
+
+  at.onchange=toggleJP;
+
+  function toggleJP(){lw.classList.toggle('hideJP',at.checked);}
+
+  function shuffle(arr,seed){
+    const a=arr.slice(),rng=new Math.seedrandom(seed);
+    for(let i=a.length-1;i>0;i--){
+      const j=Math.floor(rng()*(i+1));
+      [a[i],a[j]]=[a[j],a[i]];
+    }
+    return a;
+  }
+
+  function render(arr){
+    if(header){lw.textContent='ヘッダー行があるため表示できません';return;}
+    if(!arr.length){lw.textContent='データがありません';return;}
+    lw.innerHTML=arr.map(({num,en,ja})=>
+      `<div class="item"><div class="num">${num}</div><div class="en">${esc(en)}</div><div class="ja">${esc(ja)}</div></div>`
+    ).join('');
+  }
+
+  const esc=s=>s.replace(/[&<>"'`=\/]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'}[c]));
+}
+</script>
+</body>
+</html>
