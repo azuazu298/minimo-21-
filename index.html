@@ -11,23 +11,28 @@
        font-family:-apple-system,'游ゴシック','Noto Sans JP',sans-serif;
        line-height:1.5;word-break:break-word;}
 
-  /* 起動画面 */
+  /* 起動画面 ---------------------------------------------------- */
   #startup{display:flex;flex-direction:column;align-items:center;padding-top:12vh;}
-  .appTitle{margin:0;font-size:2.6rem;font-weight:800;letter-spacing:.12em;color:#000;}  /* ← 黒字 */
-
+  .appTitle{margin:0;font-size:2.6rem;font-weight:800;letter-spacing:.12em;}
   .subtitle{margin:.4rem 0 var(--gap);font-size:1rem;font-weight:500;}
   #startup button{max-width:280px;width:100%;}
 
-  /* コントロールバー */
-  button,input[type="text"]{font-size:1rem;padding:.75rem .5rem;border:1px solid #ccc;
-    border-radius:.5rem;background:#f5f5f5;margin-bottom:var(--gap);}
+  /* 共通フォーム ------------------------------------------------ */
+  button,input[type="text"]{
+    font-size:1rem;padding:.75rem .6rem;border:1px solid #ccc;border-radius:.5rem;
+    background:#f5f5f5;margin-bottom:var(--gap);}
   button:active{background:#e0e0e0;}
 
-  #controls{margin-bottom:var(--gap);display:flex;flex-wrap:nowrap;gap:.6rem;align-items:center;overflow-x:auto;}
-  #seedBox{flex:1 1 0;min-width:100px;margin:0;}
-  #shuffleBtn{flex:0 0 auto;margin:0;}
+  /* コントロールバー（高さ統一・コンパクト） ------------------ */
+  #controls{
+    margin-bottom:var(--gap);display:flex;flex-wrap:nowrap;gap:.5rem;
+    align-items:center;overflow-x:auto;}
+  #controls button,#controls input[type="text"]{
+    padding:.45rem .6rem;height:2.4em;margin-bottom:0;}   /* ←高さそろえ & 縮小 */
+  #seedBox{flex:1 1 0;min-width:100px;}
+  #plusBtn,#minusBtn{flex:0 0 2.8em;}                      /* 固定幅 */
 
-  /* リスト */
+  /* リスト ----------------------------------------------------- */
   #listWrapper{font-size:1rem;}
   .item{margin-bottom:var(--gap);}
   .num{font-weight:bold;}
@@ -35,18 +40,22 @@
   .ja{margin-left:.5em;}
   #listWrapper.hideJP .ja{display:none;}
 
-  /* トグル */
-  .switchLabel{display:flex;align-items:center;gap:.4em;font-size:.95rem;}
-  .toggleSwitch{position:relative;width:2.5em;height:1.4em;}
+  /* トグル（右下のみ使用） ------------------------------------ */
+  .toggleSwitch{position:relative;width:3em;height:1.7em;}
   .toggleSwitch input{opacity:0;width:0;height:0;}
   .slider{position:absolute;inset:0;background:#ccc;border-radius:1em;transition:.2s;}
-  .slider:before{content:"";position:absolute;left:.2em;bottom:.2em;width:1em;height:1em;background:#fff;border-radius:50%;transition:.2s;}
+  .slider:before{content:"";position:absolute;left:.25em;bottom:.25em;width:1.2em;height:1.2em;
+    background:#fff;border-radius:50%;transition:.2s;}
   .toggleSwitch input:checked + .slider{background:#4cd964;}
-  .toggleSwitch input:checked + .slider:before{transform:translateX(1.1em);}
+  .toggleSwitch input:checked + .slider:before{transform:translateX(1.3em);}
+
+  /* 右下追従トグル -------------------------------------------- */
+  #floatingSwitch{position:fixed;bottom:1rem;right:1rem;z-index:9999;display:none;}
 </style>
 </head>
 <body>
 
+<!-- 起動画面 -->
 <section id="startup">
   <h1 class="appTitle">minimo</h1>
   <div class="subtitle">2人1組英トレアプリ</div>
@@ -56,47 +65,59 @@
   <button id="buildBtn" disabled>ページを作る</button>
 </section>
 
+<!-- 表示ページ -->
 <section id="displayPage" style="display:none">
   <div id="controls">
-    <label class="switchLabel">
-      回答者機能
-      <span class="toggleSwitch">
-        <input type="checkbox" id="answerToggle">
-        <span class="slider"></span>
-      </span>
-    </label>
+    <button id="plusBtn">大</button>
+    <button id="minusBtn">小</button>
     <input type="text" id="seedBox" placeholder="Seed">
     <button id="shuffleBtn">ランダム表示</button>
   </div>
+
   <div id="listWrapper"></div>
+
+  <!-- 右下固定スイッチ -->
+  <label id="floatingSwitch" class="toggleSwitch">
+    <input type="checkbox" id="answerToggle">
+    <span class="slider"></span>
+  </label>
 </section>
 
 <script>
-/* ライブラリ読み込み */
+/* ①ライブラリ読み込み */
 (async()=>{
   const libs=[
     {g:'XLSX',u:'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js',k:'minimo_xlsx'},
     {g:'Math.seedrandom',u:'https://cdn.jsdelivr.net/npm/seedrandom@3.0.5/seedrandom.min.js',k:'minimo_seed'}
   ],run=c=>Function(c)();
+
   for(const{g,u,k}of libs){
-    const[a,b]=g.split('.');let ok=b?(window[a]&&window[a][b]):window[a];
-    if(ok)continue;
-    let code=localStorage.getItem(k);
-    if(code){run(code);ok=b?(window[a]&&window[a][b]):window[a];}
-    if(ok)continue;
-    const r=await fetch(u);if(!r.ok)throw new Error(r.status);
-    code=await r.text();run(code);localStorage.setItem(k,code);
+    const [p,q] = g.split('.');
+    let ok = q ? (window[p] && window[p][q]) : window[p];
+    if(ok) continue;
+
+    let code = localStorage.getItem(k);
+    if(code){ run(code); ok = q ? (window[p] && window[p][q]) : window[p]; }  // ← 括弧を閉じて ;
+    if(ok) continue;
+
+    const r = await fetch(u);
+    if(!r.ok) throw new Error(r.status);
+    code = await r.text();
+    run(code);
+    localStorage.setItem(k, code);
   }
   init();
 })();
 
-/* メイン */
+/* ②メイン */
 function init(){
   const $=id=>document.getElementById(id);
   const f=$('fileInput'),pk=$('pickFileBtn'),bd=$('buildBtn'),
         sd=$('seedBox'),sh=$('shuffleBtn'),lw=$('listWrapper'),
-        at=$('answerToggle'),st=$('startup'),dp=$('displayPage');
-  let rows=[],header=false;
+        plus=$('plusBtn'),minus=$('minusBtn'),
+        tg=$('answerToggle'),fs=$('floatingSwitch'),
+        st=$('startup'),dp=$('displayPage');
+  let rows=[],header=false,font=1;           // font = rem
 
   pk.onclick=()=>f.click();
 
@@ -123,22 +144,22 @@ function init(){
     }catch(e){alert('読み込みエラー: '+e);}
   };
 
-  bd.onclick=()=>{
-    st.style.display='none';dp.style.display='block';
-    render(rows);toggleJP();
-  };
+  bd.onclick=()=>{st.style.display='none';dp.style.display='block';fs.style.display='block';render(rows);};
 
   sh.onclick=()=>{
     if(header||!rows.length){alert('データがありません');return;}
     const seed=sd.value.trim();
     const arr=seed===''?rows:shuffle(rows,seed);
-    render(arr);toggleJP();
+    render(arr);
   };
 
-  at.onchange=toggleJP;
+  tg.onchange=()=>lw.classList.toggle('hideJP',tg.checked);
 
-  function toggleJP(){lw.classList.toggle('hideJP',at.checked);}
+  plus.onclick=()=>{font=Math.min(font+0.1,2);applyFont();}
+  minus.onclick=()=>{font=Math.max(font-0.1,0.6);applyFont();}
+  function applyFont(){lw.style.fontSize=font.toFixed(1)+'rem';}
 
+  /* ユーティリティ */
   function shuffle(arr,seed){
     const a=arr.slice(),rng=new Math.seedrandom(seed);
     for(let i=a.length-1;i>0;i--){
@@ -154,6 +175,8 @@ function init(){
     lw.innerHTML=arr.map(({num,en,ja})=>
       `<div class="item"><div class="num">${num}</div><div class="en">${esc(en)}</div><div class="ja">${esc(ja)}</div></div>`
     ).join('');
+    lw.classList.toggle('hideJP',tg.checked);
+    applyFont();
   }
 
   const esc=s=>s.replace(/[&<>"'`=\/]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;','/':'&#x2F;','`':'&#x60;','=':'&#x3D;'}[c]));
